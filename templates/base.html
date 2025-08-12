@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scoring Alternativo PYMEs</title>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- PWA / tema -->
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="color-scheme" content="light" />
+</head>
+
+<body>
+  <a href="#contenido" class="sr-only">Saltar al contenido</a>
+
+  <!-- header/ footer siguen oscuros (clase hf-inverted) y ahora muestran logo -->
+  <header role="banner" class="hf-inverted">
+    <div class="container header__top">
+      <a href="{{ url_for('index') }}" class="brand" aria-label="Inicio">
+        <img class="logo logo--light" src="{{ url_for('static', filename='img/CONFia.png') }}" alt="CONFia"
+          height="28" />
+      </a>
+      <button id="toggleTheme" aria-label="Cambiar tema" class="btn-ghost">🌙</button>
+    </div>
+  </header>
+
+  <main id="contenido" role="main">
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <footer role="contentinfo" class="hf-inverted">
+    <div class="container">
+      <small>&copy; 2025 Prototipo IA — Reto Viamática. Uso demostrativo.</small>
+    </div>
+  </footer>
+
+  <script>
+    // Reduce motion
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      try { document.querySelectorAll('*').forEach(el => el.style.scrollBehavior = 'auto'); } catch { }
+    }
+
+    // ---- Tema día/noche ----
+    (function () {
+      const KEY = 'theme';
+      const prefersDark = () => window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+      const saved = localStorage.getItem(KEY);
+      const initial = saved || (prefersDark() ? 'dark' : 'light');
+
+      function applyTheme(t) {
+        document.documentElement.setAttribute('data-theme', t);
+        localStorage.setItem(KEY, t);
+
+        // Actualiza <meta name="theme-color">
+        const cs = getComputedStyle(document.documentElement);
+        const bg = cs.getPropertyValue('--bg').trim() || (t === 'dark' ? '#0f172a' : '#f8fafc');
+        let meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', bg);
+
+        // Chart.js en sintonía
+        if (window.Chart) {
+          const fg = (cs.getPropertyValue('--fg') || (t === 'dark' ? '#e2e8f0' : '#0f172a')).trim();
+          const grid = (t === 'dark') ? 'rgba(226,232,240,.15)' : 'rgba(15,23,42,.12)';
+          Chart.defaults.color = fg;
+          Chart.defaults.font.family = "Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, 'Helvetica Neue', Arial";
+          Chart.defaults.plugins.legend.labels.usePointStyle = true;
+          window.__chartTheme = { gridColor: grid };
+
+          if (Array.isArray(window.__charts)) {
+            window.__charts.forEach(ch => {
+              if (!ch?.options?.scales) return;
+              if (ch.options.scales.x?.grid) ch.options.scales.x.grid.color = grid;
+              if (ch.options.scales.y?.grid) ch.options.scales.y.grid.color = grid;
+              ch.update('none');
+            });
+          }
+        }
+
+        // Icono del botón
+        const btn = document.getElementById('toggleTheme');
+        if (btn) btn.textContent = t === 'dark' ? '🌙' : '☀️';
+      }
+
+      applyTheme(initial);
+
+      document.getElementById('toggleTheme')?.addEventListener('click', () => {
+        const curr = document.documentElement.getAttribute('data-theme') || initial;
+        applyTheme(curr === 'dark' ? 'light' : 'dark');
+      });
+    })();
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="toast" id="toastOk">Evaluación generada correctamente.</div>
+
+<section class="card">
+  <h2>Resultado</h2>
+
+  <!-- Acciones -->
+  <div class="actions" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+    <a href="{{ url_for('index') }}" class="btn-chip btn-chip--danger">← Volver al inicio</a>
+    <button class="btn-chip btn-chip--success" onclick="window.print()">Descargar reporte (PDF)</button>
+  </div>
+
+  {% if datos %}
+  <table class="table" style="margin-top:10px;">
+    <tr>
+      <th>Razón Social:</th>
+      <td>{{ datos.razon_social or "—" }}</td>
+    </tr>
+    <tr>
+      <th>RUC:</th>
+      <td>{{ datos.ruc or "—" }}</td>
+    </tr>
+    <tr>
+      <th>Expediente:</th>
+      <td>{{ datos.expediente or "—" }}</td>
+    </tr>
+  </table>
+  {% endif %}
+
+  <hr>
+
+  {% set _status = status|default("") %}
+  {% set _msg = msg|default("") %}
+  {% set _total = total_score|default(None) %}
+  {% set _pred = pred_texto|default("") %}
+
+  {% if _status == "ok" %}
+  {% set _r = (_pred or '')|lower %}
+  {% set risk_kpi = 'summary-item--mid' %}
+  {% if _r in ['bajo','low'] %}{% set risk_kpi = 'summary-item--low' %}
+  {% elif _r in ['alto','high'] %}{% set risk_kpi = 'summary-item--high' %}{% endif %}
+
+  <!-- KPIs -->
+  <div class="summary" style="margin-top:8px;">
+    <div class="summary-item" aria-label="Score total">
+      <div class="value">{{ _total is not none and ('%.2f%%'|format(_total*100)) or "—" }}</div>
+      <div class="label">Score Total</div>
+    </div>
+
+    <!-- KPI Clasificación pintado por riesgo -->
+    <div class="summary-item {{ risk_kpi }}" aria-label="Clasificación del riesgo">
+      <div class="value">{{ _pred or "—" }}</div>
+      <div class="label">Clasificación</div>
+    </div>
+
+    <div class="summary-item" aria-label="Modo de cálculo">
+      <div class="value">Automático</div>
+      <div class="label">Modo</div>
+    </div>
+  </div>
+
+  <!-- Badge + progreso -->
+  <div class="progress" style="margin-top:12px;" aria-label="Barra de progreso del score" role="progressbar"
+    aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ _total is not none and (_total*100)|round(1) or 0 }}">
+    <i style="width: {{ _total is not none and (_total*100)|round(1) or 0 }}%"></i>
+  </div>
+
+  {% if features_json %}
+  <section class="card" style="margin-top:12px;">
+    <h3>Variables del modelo</h3>
+    <canvas id="barVars" height="110" aria-label="Variables del modelo" role="img"></canvas>
+  </section>
+  {% endif %}
+
+  {% elif _status == "no_pyme" %}
+  <p class="mensaje-alerta rojo"><strong>Su compañía no es PYME</strong></p>
+
+  {% elif _status == "no_expediente" %}
+  <p class="mensaje-alerta rojo"><strong>Alerta:</strong> no existe expediente en la Super de Compañías</p>
+
+  {% elif _status == "error" %}
+  <p class="mensaje-alerta rojo"><strong>Error:</strong> {{ _msg }}</p>
+  {% endif %}
+</section>
+
+<!-- ====== Métricas de redes ====== -->
+{% if social_url or social %}
+<section class="card" style="margin-top:12px;">
+  <h3>Métricas de redes</h3>
+
+  {% if not social_url %}
+  <p>No se proporcionó URL de red social.</p>
+  {% else %}
+  <p>
+    <strong>Perfil:</strong>
+    <a href="{{ social_url }}" target="_blank" rel="noopener">{{ social_url }}</a>
+  </p>
+
+  {% if social and social.error %}
+  <p class="mensaje-alerta rojo">Error al obtener métricas: {{ social.error }}</p>
+  {% elif social and social.platform %}
+  <table class="table">
+    <tr>
+      <th>Plataforma:</th>
+      <td>{{ social.platform|capitalize }}</td>
+    </tr>
+    <tr>
+      <th>Seguidores:</th>
+      <td>{{ social.followers_text or social.followers or "—" }}</td>
+    </tr>
+
+    {% if social.platform == 'instagram' %}
+    <tr>
+      <th>Publicaciones:</th>
+      <td>{{ social.posts_text or social.posts or "—" }}</td>
+    </tr>
+    <tr>
+      <th>Seguidos:</th>
+      <td>{{ social.following_text or social.following or "—" }}</td>
+    </tr>
+    {% elif social.platform == 'facebook' %}
+    <tr>
+      <th>Me gusta:</th>
+      <td>{{ social.likes_text or social.likes or "—" }}</td>
+    </tr>
+    {% endif %}
+  </table>
+  {% else %}
+  <p>No hubo métricas disponibles para la URL proporcionada.</p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
+{% if social and ((social.platform == 'instagram' and (social.posts or social.followers)) or (social.platform ==
+'facebook' and (social.followers or social.likes))) %}
+<section class="card" style="margin-top:12px;">
+  <h3>Gráfica · Redes</h3>
+  <canvas id="socialChart" height="120" aria-label="Gráfico de redes sociales" role="img"></canvas>
+</section>
+{% endif %}
+
+<script>
+  // Helpers de tema
+  const gridColor = (window.__chartTheme && window.__chartTheme.gridColor) || 'rgba(226,232,240,.15)';
+  const toPct = v => (typeof v === 'number' ? (v * 100).toFixed(0) + '%' : v);
+
+  // Toast OK
+  setTimeout(() => document.getElementById('toastOk')?.classList.add('show'), 200);
+  setTimeout(() => document.getElementById('toastOk')?.classList.remove('show'), 3500);
+
+  // ====== Chart: Variables del modelo ======
+  {% if _status == "ok" and features_json %}
+  (function () {
+    const feats = {{ features_json | tojson | safe
+  }};
+  if (!feats || Object.keys(feats).length === 0) return;
+
+  const labels = Object.keys(feats);
+  const values = Object.values(feats);
+
+  const el = document.getElementById('barVars');
+  if (!el) return;
+  const ctx = el.getContext('2d');
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Valor normalizado (df_score)',
+        data: values,
+        borderWidth: 1,
+        borderRadius: 6,
+        maxBarThickness: 48
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          intersect: false,
+          mode: 'index',
+          callbacks: { label: (c) => ' ' + toPct(c.parsed.y ?? c.parsed) }
+        }
+      },
+      scales: {
+        x: { grid: { color: gridColor } },
+        y: { min: 0, max: 1, beginAtZero: true, grid: { color: gridColor }, ticks: { callback: toPct } }
+      }
+    }
+  });
+  }) ();
+  {% endif %}
+
+  // ====== Chart: Redes ======
+  {% if social and((social.platform == 'instagram' and(social.posts or social.followers)) or(social.platform == 'facebook' and(social.followers or social.likes))) %}
+  (function () {
+    const s = {{ (social or { }) | tojson | safe
+  }};
+  if (!s) return;
+
+  const labels = [];
+  const data = [];
+
+  function add(label, val) {
+    const n = Number(val);
+    if (Number.isFinite(n) && n > 0) { labels.push(label); data.push(n); }
+  }
+
+  if (s.platform === 'instagram') {
+    add('Publicaciones', s.posts);
+    add('Seguidores', s.followers);
+  } else if (s.platform === 'facebook') {
+    add('Seguidores', s.followers);
+    add('Me gusta', s.likes);
+  }
+
+  const el = document.getElementById('socialChart');
+  if (!el || !data.length) return;
+
+  const ctx = el.getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Conteos', data, borderWidth: 1, borderRadius: 6, maxBarThickness: 48 }] },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          grid: { color: gridColor },
+          ticks: {
+            callback: function (value) {
+              const n = Number(value);
+              if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+              if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+              return n;
+            }
+          }
+        },
+        y: { grid: { color: gridColor } }
+      }
+    }
+  });
+  }) ();
+  {% endif %}
+</script>
+
+{% endblock %}

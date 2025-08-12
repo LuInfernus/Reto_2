@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h2>Cargar Certificado de Compañía (PDF)</h2>
+  <p class="text-muted" style="color:var(--muted); margin-top:4px; margin-bottom:12px;">
+    Sube el PDF oficial emitido por la Superintendencia de Compañías y, opcionalmente, la URL de tu negocio.
+  </p>
+
+  <form method="POST" enctype="multipart/form-data" id="form-evaluar" novalidate>
+
+    <!-- Dropzone PDF (requerido) -->
+    <label for="pdfInput">Certificado de la Superintendencia (PDF) — requerido</label>
+    <div class="dropzone" id="dropzone-pdf" tabindex="0" role="button" aria-label="Arrastra tu PDF o haz clic">
+      <input type="file" name="certificado_pdf" accept=".pdf,application/pdf" hidden id="pdfInput" required>
+      <div class="dz-cta">
+        <strong>Arrastra tu PDF aquí</strong> o <span class="link">haz clic para seleccionar</span>
+        <div class="dz-sub">Formato aceptado: <code>.pdf</code></div>
+        <div class="dz-file" id="pdfName">Ningún archivo seleccionado</div>
+      </div>
+    </div>
+
+    <!-- URL de red social -->
+    <label style="margin-top:14px;">URL de red social (opcional)
+      <input type="url" name="social_url" placeholder="https://facebook.com/tu-negocio"
+             inputmode="url" pattern="https?://.+" aria-label="URL de red social">
+      <small style="color:var(--muted);">Facebook, Instagram </small>
+    </label>
+
+    <!-- Acciones -->
+    <div style="display:flex; align-items:center; gap:12px; margin-top:12px;">
+      <button type="submit" id="btnSubmit" class="btn-chip btn-chip--success">Analizar datos</button>
+      <span id="formStatus" aria-live="polite" style="color:var(--muted); font-size:12px;"></span>
+    </div>
+  </form>
+</section>
+
+<!-- ============== Autores / Quiénes somos ============== -->
+<section id="equipo" class="section section-authors">
+  <h3 class="section-title" style="text-align:center; margin-bottom:18px;">Autores</h3>
+
+  <div class="authors-grid authors-grid--3">
+    <article class="author-card">
+      <img class="avatar" loading="lazy"
+           src="{{ url_for('static', filename='img/LuisD.jpg') }}"
+           alt="Luis Dominguez">
+      <h4>Luis Dominguez</h4>
+    </article>
+
+    <article class="author-card">
+      <img class="avatar" loading="lazy"
+           src="{{ url_for('static', filename='img/DanielaT.png') }}"
+           alt="Daniela Tupiza">
+      <h4>Daniela Tupiza</h4>
+    </article>
+
+    <article class="author-card">
+      <img class="avatar" loading="lazy"
+           src="{{ url_for('static', filename='img/SebastianC.png') }}"
+           alt="Sebastián Cadena">
+      <h4>Sebastián Cadena</h4>
+    </article>
+  </div>
+</section>
+
+<script>
+  // Estado del envío
+  (function () {
+    const form = document.getElementById('form-evaluar');
+    const btn  = document.getElementById('btnSubmit');
+    const status = document.getElementById('formStatus');
+    if (!form || !btn) return;
+
+    form.addEventListener('submit', (e) => {
+      if (!form.checkValidity()) {
+        e.preventDefault();
+        status.textContent = 'Por favor, adjunta el PDF requerido.';
+        // resalta dropzone si falta el PDF
+        const pdfIn = document.getElementById('pdfInput');
+        const dz = document.getElementById('dropzone-pdf');
+        if (pdfIn && !pdfIn.files.length && dz) {
+          dz.classList.add('is-error');
+          setTimeout(() => dz.classList.remove('is-error'), 1500);
+        }
+        return;
+      }
+      btn.disabled = true;
+      btn.dataset.txt = btn.textContent;
+      btn.textContent = 'Analizando…';
+      status.textContent = 'Procesando certificado y señales…';
+    });
+
+    // Si vuelves con el botón atrás
+    window.addEventListener('pageshow', (evt) => {
+      if (evt.persisted) {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.txt || 'Analizar datos';
+        status.textContent = '';
+      }
+    });
+  })();
+
+  // Dropzone reutilizable (aquí solo PDF)
+  (function () {
+    const dz = document.getElementById('dropzone-pdf');
+    const input = document.getElementById('pdfInput');
+    const nameEl = document.getElementById('pdfName');
+    if (!dz || !input || !nameEl) return;
+
+    const updateName = () => {
+      const f = input.files?.[0];
+      nameEl.textContent = f ? f.name : 'Ningún archivo seleccionado';
+    };
+
+    const acceptFileList = (fileList) => {
+      if (!fileList || !fileList.length) return;
+      const f = fileList[0];
+      const ok = /\.pdf$/i.test(f.name) || (f.type && f.type.includes('pdf'));
+      if (!ok) {
+        nameEl.textContent = 'Archivo no válido: sube un .pdf';
+        dz.classList.add('is-error');
+        setTimeout(() => dz.classList.remove('is-error'), 1500);
+        return;
+      }
+      input.files = fileList;
+      updateName();
+    };
+
+    // Click + teclado accesible
+    dz.addEventListener('click', () => input.click());
+    dz.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+    });
+
+    // Drag & Drop
+    ['dragenter', 'dragover'].forEach(ev =>
+      dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('is-drag'); })
+    );
+    ['dragleave', 'drop'].forEach(ev =>
+      dz.addEventListener(ev, () => dz.classList.remove('is-drag'))
+    );
+    dz.addEventListener('drop', (e) => {
+      e.preventDefault();
+      acceptFileList(e.dataTransfer.files);
+    });
+
+    // Cambio por diálogo de archivos
+    input.addEventListener('change', updateName);
+  })();
+</script>
+
+{% endblock %}
